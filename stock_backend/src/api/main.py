@@ -26,7 +26,7 @@ app.add_middleware(
 # --- In-memory admin authentication/session logic ---
 # Hardcoded admin credentials (for demonstration: in production, use env variables/storage)
 ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "password123"
+ADMIN_PASSWORD = "admin"
 
 # In-memory token/session store: token -> username
 ADMIN_SESSIONS = {}
