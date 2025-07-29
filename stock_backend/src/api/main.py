@@ -304,3 +304,51 @@ def delete_product(product_id: int):
         raise HTTPException(status_code=404, detail="Product not found.")
     PRODUCTS.pop(idx)
     return
+
+
+# --- ADMIN MOCK DATA MANAGEMENT ---
+
+# PUBLIC_INTERFACE
+@app.post(
+    "/admin/refill-mocks",
+    tags=["Admin"],
+    summary="Reset data to default mock list",
+    description="Admin-only; resets all in-memory data to the initial large mock dataset.",
+    dependencies=[Depends(authenticate_admin_token)],
+    status_code=200
+)
+def refill_mock_data():
+    """
+    Reset all data to initial mock dataset.
+    - Admin only.
+    - Reloads categories and products with default mock data.
+    - Non-destructive to external systems (in-memory only).
+    """
+    global CATEGORIES, PRODUCTS
+    categories_new = load_initial_categories(__import__('src.api.models', fromlist=['Category']))
+    products_new = load_initial_products(__import__('src.api.models', fromlist=['Product']))
+    CATEGORIES = categories_new  # Explicit assignment to global
+    PRODUCTS = products_new  # Explicit assignment to global
+    return {"message": "Mock data reset successful", "categories": len(CATEGORIES), "products": len(PRODUCTS)}
+
+
+# PUBLIC_INTERFACE
+@app.delete(
+    "/admin/clear-data",
+    tags=["Admin"],
+    summary="Clear all data",
+    description="Admin-only; removes all categories and products from memory.",
+    dependencies=[Depends(authenticate_admin_token)],
+    status_code=200
+)
+def clear_all_data():
+    """
+    Clear all data from memory.
+    - Admin only.
+    - Removes all categories and products.
+    - Non-destructive to external systems (in-memory only).
+    """
+    global CATEGORIES, PRODUCTS
+    CATEGORIES = []  # Explicit reassignment instead of clear()
+    PRODUCTS = []  # Explicit reassignment instead of clear()
+    return {"message": "All data cleared successfully", "categories": 0, "products": 0}
