@@ -1,14 +1,17 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel, Field
 from typing import List
+import uuid
 
 app = FastAPI(
     title="Stock Management API",
     version="0.1.0",
     description="API for public browsing of categories and products in stock management system.",
     openapi_tags=[
-        {"name": "Public", "description": "Endpoints for public browsing of categories and products"}
+        {"name": "Public", "description": "Endpoints for public browsing of categories and products"},
+        {"name": "Admin", "description": "Admin authentication and management endpoints (protected)"},
     ]
 )
 
@@ -19,6 +22,46 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- In-memory admin authentication/session logic ---
+# Hardcoded admin credentials (for demonstration: in production, use env variables/storage)
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "password123"
+
+# In-memory token/session store: token -> username
+ADMIN_SESSIONS = {}
+
+class LoginRequest(BaseModel):
+    username: str = Field(..., description="Admin username")
+    password: str = Field(..., description="Admin password")
+
+class LoginResponse(BaseModel):
+    access_token: str = Field(..., description="Bearer token for admin sessions")
+    token_type: str = Field(default="bearer", description="Type of token (bearer)")
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+
+# PUBLIC_INTERFACE
+def authenticate_admin_token(token: str = Depends(oauth2_scheme)) -> str:
+    """
+    Dependency to authenticate an admin (bearer token) for protected endpoints.
+
+    Args:
+        token (str): Bearer token from Authorization header
+
+    Raises:
+        HTTPException: 401 if token invalid or expired
+
+    Returns:
+        str: Username if valid token, raises HTTPException otherwise
+    """
+    if token in ADMIN_SESSIONS:
+        return ADMIN_SESSIONS[token]
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired admin authentication token.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 # In-memory data structures for categories and products
 class Category(BaseModel):
@@ -33,6 +76,41 @@ class Product(BaseModel):
     category_id: int = Field(..., description="ID of associated category")
     image_url: str = Field(..., description="Image URL (placeholder for now)")
     quantity: int = Field(..., description="Quantity in stock")
+
+# --- ADMIN AUTH: /login POST endpoint ---
+# PUBLIC_INTERFACE
+@app.post(
+    "/login",
+    response_model=LoginResponse,
+    tags=["Admin"],
+    summary="Admin login (in-memory demo)",
+    description="Authenticate admin via username and password, returns a bearer token for session-based access to protected endpoints.",
+    responses={
+        200: {"description": "Login successful, returns token"},
+        401: {"description": "Invalid credentials"},
+    },
+)
+def admin_login(data: LoginRequest):
+    """
+    Authenticates an admin with hardcoded credentials and returns a bearer token (in-memory).
+    - Username and password must match the system's hardcoded values.
+    - On success, generates a UUID4 bearer token and stores it in memory.
+
+    Args:
+        data (LoginRequest): JSON body, must include username and password
+
+    Returns:
+        LoginResponse with access token (bearer)
+    """
+    if data.username == ADMIN_USERNAME and data.password == ADMIN_PASSWORD:
+        # Issue new random token
+        token = str(uuid.uuid4())
+        ADMIN_SESSIONS[token] = data.username
+        return LoginResponse(access_token=token, token_type="bearer")
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid username or password",
+    )
 
 # Expanded hard-coded data for scroll/organization testing (10 categories, 50+ products)
 CATEGORIES = [
@@ -119,6 +197,12 @@ PRODUCTS = [
 def health_check():
     """Health check endpoint for the Stock Management API."""
     return {"message": "Healthy"}
+
+# To protect an endpoint for admin, add: @app.get(..., dependencies=[Depends(authenticate_admin_token)], tags=["Admin"])
+# Example for admin-only usage (uncomment for protected usage):
+# @app.get("/admin/protected", tags=["Admin"], dependencies=[Depends(authenticate_admin_token)])
+# def admin_only():
+#     return {"msg": "Secret admin data"}
 
 # PUBLIC_INTERFACE
 @app.get("/categories", response_model=List[Category], tags=["Public"], summary="List all categories", description="Retrieve all stock categories (public, read-only)")
